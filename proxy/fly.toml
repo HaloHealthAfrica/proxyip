@@ -1,0 +1,21 @@
+app = 'proxyip-relay'
+primary_region = 'iad'
+
+[build]
+
+[[services]]
+  protocol = 'tcp'
+  internal_port = 8888
+
+  [[services.ports]]
+    port = 3128
+
+  [[services.tcp_checks]]
+    grace_period = "10s"
+    interval = "30s"
+    timeout = "5s"
+
+[[vm]]
+  memory = '256mb'
+  cpu_kind = 'shared'
+  cpus = 1

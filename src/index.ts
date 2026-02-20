@@ -4,12 +4,29 @@ import { config } from "./config/index.js";
 const PORT = Number(process.env.PORT) || 8080;
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(",").map(s => s.trim()) || ["*"];
 
+function safeHost(raw: string | undefined): string {
+  if (!raw) return "disabled";
+  try {
+    return new URL(raw).host;
+  } catch {
+    return `invalid (${raw})`;
+  }
+}
+
 let proxyFetch: typeof globalThis.fetch | null = null;
 
 async function getFetch(): Promise<typeof globalThis.fetch> {
   const proxyUrl = config.marketData.proxyUrl;
   if (!proxyUrl) return globalThis.fetch;
   if (proxyFetch) return proxyFetch;
+
+  try {
+    new URL(proxyUrl);
+  } catch {
+    console.error(`[proxy] MARKETDATA_PROXY_URL is not a valid URL: "${proxyUrl}"`);
+    console.error("[proxy] Falling back to direct connection");
+    return globalThis.fetch;
+  }
 
   const { ProxyAgent } = await import("undici");
   const agent = new ProxyAgent(proxyUrl);
@@ -21,7 +38,7 @@ async function getFetch(): Promise<typeof globalThis.fetch> {
       dispatcher: agent,
     });
 
-  console.log(`[proxy] Enabled → ${new URL(proxyUrl).host}`);
+  console.log(`[proxy] Enabled → ${safeHost(proxyUrl)}`);
   return proxyFetch;
 }
 
@@ -47,9 +64,7 @@ const server = createServer(async (req, res) => {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({
       status: "ok",
-      proxy: config.marketData.proxyUrl
-        ? new URL(config.marketData.proxyUrl).host
-        : "disabled",
+      proxy: safeHost(config.marketData.proxyUrl),
     }));
     return;
   }
@@ -105,9 +120,5 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`proxyip relay listening on :${PORT}`);
   console.log(`Forwarding /v1/* → ${config.marketData.baseUrl}`);
-  if (config.marketData.proxyUrl) {
-    console.log(`Via proxy → ${new URL(config.marketData.proxyUrl).host}`);
-  } else {
-    console.log("Proxy: disabled (direct connection)");
-  }
+  console.log(`Proxy: ${safeHost(config.marketData.proxyUrl)}`);
 });
